@@ -26,29 +26,39 @@ let player;
 let cursors;
 let bullets;
 let lastFired = 0;
+let enemies; // 적 그룹 변수 추가
 
 function preload() {
     // 아직은 이미지 없이 기본 도형으로 진행합니다.
 }
 
 function create() {
-    // 1. 플레이어 생성 (초록색 사각형)
+    // 1. 플레이어 및 탄환 설정 (2단계와 동일)
     player = this.add.rectangle(225, 550, 40, 40, 0x00ff00);
     this.physics.add.existing(player);
     player.body.setCollideWorldBounds(true);
 
-    // 2. 탄환 그룹 생성
-    bullets = this.physics.add.group({
-        defaultKey: 'bullet',
-        maxSize: 30 // 메모리 효율을 위해 화면 내 최대 탄환 수 제한
+    bullets = this.physics.add.group();
+    cursors = this.input.keyboard.createCursorKeys();
+
+    // 2. 적군 그룹 생성
+    enemies = this.physics.add.group();
+
+    // 3. 일정 시간마다 적군 생성 (Timer 이벤트)
+    this.time.addEvent({
+        delay: 1000,                // 1초마다
+        callback: spawnEnemy,       // spawnEnemy 함수 실행
+        callbackScope: this,
+        loop: true
     });
 
-    // 3. 입력 장치 설정 (방향키, 스페이스바)
-    cursors = this.input.keyboard.createCursorKeys();
+    // 4. 충돌 판정 (Overlap) 설정
+    // 탄환(bullets)과 적군(enemies)이 겹치면 hitEnemy 함수 실행
+    this.physics.add.overlap(bullets, enemies, hitEnemy, null, this);
 }
 
 function update(time) {
-    // 4. 플레이어 이동 로직
+    // 플레이어 이동 및 발사 로직 (2단계 유지)
     if (cursors.left.isDown) {
         player.body.setVelocityX(-300);
     } else if (cursors.right.isDown) {
@@ -57,17 +67,30 @@ function update(time) {
         player.body.setVelocityX(0);
     }
 
-    // 5. 탄환 발사 로직 (스페이스바)
     if (cursors.space.isDown && time > lastFired) {
         fireBullet(this, time);
     }
 
-    // 6. 화면 밖으로 나간 탄환 제거 (메모리 관리)
-    bullets.children.each((bullet) => {
-        if (bullet.y < 0) {
-            bullet.destroy();
-        }
-    });
+    // 화면 밖으로 나간 오브젝트 정리
+    bullets.children.each(bullet => { if (bullet.y < 0) bullet.destroy(); });
+    enemies.children.each(enemy => { if (enemy.y > 600) enemy.destroy(); });
+}
+
+// 적군 생성 함수
+function spawnEnemy() {
+    const x = Phaser.Math.Between(30, 420); // 랜덤한 X 좌표
+    const enemy = this.add.rectangle(x, -20, 30, 30, 0xff0000); // 빨간색 사각형 적군
+    this.physics.add.existing(enemy);
+    
+    enemies.add(enemy);
+    enemy.body.setVelocityY(150); // 아래로 이동
+}
+
+// 충돌 시 실행될 함수
+function hitEnemy(bullet, enemy) {
+    bullet.destroy(); // 탄환 제거
+    enemy.destroy();  // 적군 제거
+    // 여기에 점수 증가 로직을 넣으면 훌륭한 백엔드 연동 포인트가 됩니다!
 }
 
 function fireBullet(scene, time) {
