@@ -60,6 +60,11 @@ function preload(this: Phaser.Scene) {
         frameHeight: 114
     });
 
+    this.load.audio('bgm', 'assets/sounds/bgm.mp3');
+    this.load.audio('fire', 'assets/sounds/fire.mp3');
+    this.load.audio('explosion', 'assets/sounds/explosion.mp3');
+    this.load.audio('powerup', 'assets/sounds/powerup.mp3');
+    this.load.audio('outtro', 'assets/sounds/outtro.mp3');
 }
 
 function create(this: Phaser.Scene) {
@@ -121,6 +126,10 @@ function create(this: Phaser.Scene) {
         frameRate: 12,
         hideOnComplete: false
     });
+
+    // BGM 설정: 볼륨 0.5, 무한 반복(loop)
+    const music = this.sound.add('bgm', { volume: 0.5, loop: true });
+    music.play();
 }
 
 function update(this: Phaser.Scene, time: number) {
@@ -198,6 +207,9 @@ function hitEnemy(this: Phaser.Scene, bullet: Phaser.GameObjects.GameObject, ene
             // 2. 애니메이션 재생
             boom.play('explode_anim');
 
+            // 3. 효과음 재생
+            this.sound.play('explosion', { volume: 0.3 });
+
             enemy.destroy();
         }
     }
@@ -220,6 +232,7 @@ function pickUpItem(this: Phaser.Scene, playerObj: GameEntity, item: Phaser.Game
     const upgrade = this.add.sprite(playerObj.x, playerObj.y, 'upgrade');
     upgrade.setDisplaySize(playerObj.displayWidth * 0.8, playerObj.displayHeight * 0.8); 
     upgrade.play('upgrade_anim');
+    this.sound.play('powerup', { volume: 0.6 });
 
     if (fireDelay > 50) fireDelay -= 30;
 }
@@ -238,16 +251,21 @@ function fireBullet(scene: Phaser.Scene, time: number) {
     if (body) {
         body.setVelocityY(-500);
     }
+
+    scene.sound.play('fire', { volume: 0.3 });
 }
 
 function gameOver(this: Phaser.Scene) {
     isGameOver = true;
     this.physics.pause();
+    this.sound.pauseAll();
     player.setAlpha(0.5);
 
     this.add.text(225, 300, 'GAME OVER\nClick to Restart', {
         fontSize: '40px', color: '#fff', align: 'center'
     }).setOrigin(0.5);
+
+    this.sound.play('outtro', { volume: 0.5 });
 
     this.input.on('pointerdown', () => {
         this.scene.restart();
