@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 
 // 1. 객체 구조를 위한 인터페이스 정의 (Java의 DTO/Entity 느낌)
-interface GameEntity extends Phaser.GameObjects.Rectangle {
+interface GameEntity extends Phaser.Physics.Arcade.Sprite {
     body: Phaser.Physics.Arcade.Body;
     hp?: number;
     isTanker?: boolean;
@@ -37,16 +37,28 @@ let score: number = 0;
 let scoreText: Phaser.GameObjects.Text;
 let isGameOver: boolean = false;
 
-function preload() {}
+function preload(this: Phaser.Scene) {
+    this.load.image('player', 'assets/player.png');
+    this.load.image('enemy', 'assets/enemy.png');
+    this.load.image('tanker', 'assets/tanker.png');
+    this.load.image('item', 'assets/item.png');
+}
 
 function create(this: Phaser.Scene) {
     isGameOver = false;
     score = 0;
     fireDelay = 200;
 
-    // 플레이어 생성 및 타입 캐스팅
-    player = this.add.rectangle(225, 550, 40, 40, 0x00ff00) as GameEntity;
-    this.physics.add.existing(player);
+    // 1. 플레이어 생성 (정사각형 에셋 사용)
+    player = this.physics.add.sprite(225, 550, 'player') as GameEntity;
+
+    // 2. 크기 조정
+    const SIZE = 120; 
+    player.setDisplaySize(SIZE, SIZE);
+
+    // 3. 히트박스(Body) 조정
+    player.body.setSize(SIZE * 0.8, SIZE * 0.8, true);
+
     player.body.setCollideWorldBounds(true);
 
     bullets = this.physics.add.group();
@@ -94,19 +106,35 @@ function update(this: Phaser.Scene, time: number) {
 function spawnEnemy(this: Phaser.Scene) {
     if (isGameOver) return;
     const x = Phaser.Math.Between(30, 420);
-    const isTanker = Math.random() < 0.2;
+    const isTanker = Math.random() < 0.1;
     
-    const enemy = this.add.rectangle(x, -20, isTanker ? 50 : 30, isTanker ? 50 : 30, isTanker ? 0xaa00ff : 0xff0000) as GameEntity;
-    this.physics.add.existing(enemy);
+    const texture = isTanker ? 'tanker' : 'enemy';
+    const enemy = this.physics.add.sprite(x, -20, texture) as GameEntity;
     
+    const SIZE = isTanker ? 180 : 60; // 화면 크기 대비 너무 작으면 안 보이니 적당히 조절
+    
+    enemy.setDisplaySize(SIZE, SIZE);
+    enemy.body.setSize(SIZE * 0.8, SIZE * 0.8, true);
+
     enemy.hp = isTanker ? 5 : 1;
     enemy.isTanker = isTanker;
     enemies.add(enemy);
-    enemy.body.setVelocityY(isTanker ? 80 : 150);
+    enemy.body.setVelocityY(isTanker ? 50 : 150);
 }
 
 function hitEnemy(this: Phaser.Scene, bullet: Phaser.GameObjects.GameObject, enemy: GameEntity) {
     bullet.destroy();
+
+    // 피격 시 붉은색으로 변경
+    enemy.setTint(0xff0000);
+    
+    // 0.1초 후에 원래 색상으로 복구 (비동기 피드백)
+    this.time.delayedCall(50, () => {
+        if (enemy.active) {
+            enemy.clearTint();
+        }
+    });
+
     if (enemy.hp !== undefined) {
         enemy.hp -= 1;
         enemy.setAlpha(0.5);
@@ -122,24 +150,29 @@ function hitEnemy(this: Phaser.Scene, bullet: Phaser.GameObjects.GameObject, ene
 }
 
 function spawnItem(scene: Phaser.Scene, x: number, y: number) {
-    const item = scene.add.rectangle(x, y, 20, 20, 0x00ffff);
-    scene.physics.add.existing(item);
-    items.add(item);
-    
-    // item.body를 아케이드 물리 바디 타입으로 형변환(Casting)합니다.
-    const body = item.body as Phaser.Physics.Arcade.Body;
+    const item = scene.physics.add.sprite(x, y, 'item') as GameEntity;
 
-    // 이제 타입이 명확해졌으므로 에러 없이 사용할 수 있습니다.
-    if (body) {
-        body.setVelocityY(100);
-    }
+    const SIZE = 40; 
+    item.setDisplaySize(SIZE, SIZE);
+    item.body.setSize(SIZE * 0.8, SIZE * 0.8, true);
+
+    items.add(item);
+    item.body.setVelocityY(100);
 }
 
-function pickUpItem(playerObj: GameEntity, item: Phaser.GameObjects.GameObject) {
+function pickUpItem(this: Phaser.Scene, playerObj: GameEntity, item: Phaser.GameObjects.GameObject) {
     item.destroy();
     if (fireDelay > 50) fireDelay -= 30;
-    playerObj.setFillStyle(0xffff00);
-    // 씬 컨텍스트 접근을 위해 별도 처리 필요하지만 MVP에선 색상 변경만 유지
+    
+    // 노란색 필터 적용 (파워업 상태)
+    playerObj.setTint(0xffff00);
+    
+    // 0.1초 후에 원래 색상으로 복구 (비동기 피드백)
+    this.time.delayedCall(100, () => {
+        if (playerObj.active) {
+            playerObj.clearTint();
+        }
+    });
 }
 
 function fireBullet(scene: Phaser.Scene, time: number) {
