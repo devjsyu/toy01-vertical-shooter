@@ -42,6 +42,24 @@ function preload(this: Phaser.Scene) {
     this.load.image('enemy', 'assets/enemy.png');
     this.load.image('tanker', 'assets/tanker.png');
     this.load.image('item', 'assets/item.png');
+
+    // 384x48 이미지를 48x48 크기로 8등분해서 읽어라! 라는 뜻입니다.
+    this.load.spritesheet('explosion', 'assets/explosion.png', {
+        frameWidth: 48,
+        frameHeight: 48
+    });
+
+    // 576x48 이미지를 48x48 크기로 12등분해서 읽어라! 라는 뜻입니다.
+    this.load.spritesheet('upgrade', 'assets/upgrade.png', {
+        frameWidth: 48,
+        frameHeight: 48
+    });
+
+    this.load.spritesheet('laser', 'assets/laser.png', {
+        frameWidth: 88,
+        frameHeight: 114
+    });
+
 }
 
 function create(this: Phaser.Scene) {
@@ -81,6 +99,28 @@ function create(this: Phaser.Scene) {
     this.physics.add.overlap(bullets, enemies, hitEnemy as any, undefined, this);
     this.physics.add.overlap(player, items, pickUpItem as any, undefined, this);
     this.physics.add.overlap(player, enemies, gameOver as any, undefined, this);
+
+    this.anims.create({
+        key: 'explode_anim',
+        // 0, 1, 2, 3, 4, 5, 6, 7 총 8개의 프레임을 사용합니다.
+        frames: this.anims.generateFrameNumbers('explosion', { start: 0, end: 7 }),
+        frameRate: 16, // 8개 프레임이므로 속도를 약간 낮춰야(12~16) 자연스럽습니다.
+        hideOnComplete: true
+    });
+
+    this.anims.create({
+        key: 'upgrade_anim',
+        frames: this.anims.generateFrameNumbers('upgrade', { start: 0, end: 11 }),
+        frameRate: 36,
+        hideOnComplete: true
+    });
+
+        this.anims.create({
+        key: 'laser_anim',
+        frames: this.anims.generateFrameNumbers('laser', { start: 0, end: 2 }),
+        frameRate: 12,
+        hideOnComplete: false
+    });
 }
 
 function update(this: Phaser.Scene, time: number) {
@@ -114,7 +154,7 @@ function spawnEnemy(this: Phaser.Scene) {
     const SIZE = isTanker ? 180 : 60; // 화면 크기 대비 너무 작으면 안 보이니 적당히 조절
     
     enemy.setDisplaySize(SIZE, SIZE);
-    enemy.body.setSize(SIZE * 0.8, SIZE * 0.8, true);
+    enemy.body.setSize(SIZE * 0.9, SIZE * 0.9, true);
 
     enemy.hp = isTanker ? 5 : 1;
     enemy.isTanker = isTanker;
@@ -144,6 +184,20 @@ function hitEnemy(this: Phaser.Scene, bullet: Phaser.GameObjects.GameObject, ene
             score += enemy.isTanker ? 50 : 10;
             scoreText.setText(`Score: ${score}`);
             if (enemy.isTanker) spawnItem(this, enemy.x, enemy.y);
+
+            // hitEnemy 함수 내 적이 죽는 시점
+            const boom = this.add.sprite(enemy.x, enemy.y, 'explosion');
+
+            // 1. 적의 크기에 맞춰 폭발 크기를 키워줍니다. 
+            // (원본이 48이라도 setDisplaySize를 쓰면 원하는 크기로 출력됩니다.)
+            if (enemy.isTanker) {
+                boom.setDisplaySize(enemy.displayWidth * 0.5, enemy.displayHeight * 0.5);
+                this.cameras.main.shake(100, 0.02);
+            } 
+
+            // 2. 애니메이션 재생
+            boom.play('explode_anim');
+
             enemy.destroy();
         }
     }
@@ -152,9 +206,9 @@ function hitEnemy(this: Phaser.Scene, bullet: Phaser.GameObjects.GameObject, ene
 function spawnItem(scene: Phaser.Scene, x: number, y: number) {
     const item = scene.physics.add.sprite(x, y, 'item') as GameEntity;
 
-    const SIZE = 40; 
+    const SIZE = 50; 
     item.setDisplaySize(SIZE, SIZE);
-    item.body.setSize(SIZE * 0.8, SIZE * 0.8, true);
+    item.body.setSize(SIZE, SIZE, true);
 
     items.add(item);
     item.body.setVelocityY(100);
@@ -162,25 +216,22 @@ function spawnItem(scene: Phaser.Scene, x: number, y: number) {
 
 function pickUpItem(this: Phaser.Scene, playerObj: GameEntity, item: Phaser.GameObjects.GameObject) {
     item.destroy();
+
+    const upgrade = this.add.sprite(playerObj.x, playerObj.y, 'upgrade');
+    upgrade.setDisplaySize(playerObj.displayWidth * 0.8, playerObj.displayHeight * 0.8); 
+    upgrade.play('upgrade_anim');
+
     if (fireDelay > 50) fireDelay -= 30;
-    
-    // 노란색 필터 적용 (파워업 상태)
-    playerObj.setTint(0xffff00);
-    
-    // 0.1초 후에 원래 색상으로 복구 (비동기 피드백)
-    this.time.delayedCall(100, () => {
-        if (playerObj.active) {
-            playerObj.clearTint();
-        }
-    });
 }
 
 function fireBullet(scene: Phaser.Scene, time: number) {
-    const bullet = scene.add.rectangle(player.x, player.y - 20, 5, 15, 0xffff00);
-    scene.physics.add.existing(bullet);
+    // const bullet = scene.add.rectangle(player.x, player.y - 20, 5, 15, 0xffff00);
+    const bullet = scene.add.sprite(player.x, player.y, 'laser');
+    bullet.setDisplaySize(player.displayWidth * 0.8, player.displayHeight * 0.5); 
+    bullet.play('laser_anim');
     bullets.add(bullet);
 
-    // item.body를 아케이드 물리 바디 타입으로 형변환(Casting)합니다.
+    // bullet.body를 아케이드 물리 바디 타입으로 형변환(Casting)합니다.
     const body = bullet.body as Phaser.Physics.Arcade.Body;
 
     // 이제 타입이 명확해졌으므로 에러 없이 사용할 수 있습니다.
