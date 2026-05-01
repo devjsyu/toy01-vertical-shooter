@@ -36,6 +36,8 @@ let fireDelay: number = 200;
 let score: number = 0;
 let scoreText: Phaser.GameObjects.Text;
 let isGameOver: boolean = false;
+let isGameStarted: boolean = false; // 게임 시작 여부
+let startText: Phaser.GameObjects.Text; // 시작 안내 문구
 
 function preload(this: Phaser.Scene) {
     this.load.image('player', 'assets/player.png');
@@ -60,6 +62,7 @@ function preload(this: Phaser.Scene) {
         frameHeight: 114
     });
 
+    this.load.audio('intro', 'assets/sounds/intro.mp3');
     this.load.audio('bgm', 'assets/sounds/bgm.mp3');
     this.load.audio('fire', 'assets/sounds/fire.mp3');
     this.load.audio('explosion', 'assets/sounds/explosion.mp3');
@@ -68,9 +71,35 @@ function preload(this: Phaser.Scene) {
 }
 
 function create(this: Phaser.Scene) {
+    isGameStarted = false; // 초기값은 시작 안 함
     isGameOver = false;
     score = 0;
     fireDelay = 200;
+
+    // 1. 물리 엔진 일시정지 (대기 상태)
+    this.physics.pause();
+    this.sound.play('intro', { volume: 0.5 });
+
+    // 2. 시작 안내 문구 생성
+    startText = this.add.text(225, 300, 'Click to start', {
+        fontSize: '32px',
+        color: '#fff',
+        align: 'center'
+    }).setOrigin(0.5);
+
+    this.tweens.add({
+        targets: startText,
+        alpha: 0.2,
+        duration: 800,
+        ease: 'Power1',
+        yoyo: true, // 다시 돌아옴
+        loop: -1    // 무한 반복
+    });
+
+    // 3. 클릭(또는 터치) 이벤트 리스너 등록
+    this.input.once('pointerdown', () => {
+        startGame.call(this);
+    });
 
     // 1. 플레이어 생성 (정사각형 에셋 사용)
     player = this.physics.add.sprite(225, 550, 'player') as GameEntity;
@@ -93,13 +122,6 @@ function create(this: Phaser.Scene) {
     }
 
     scoreText = this.add.text(16, 16, 'Score: 0', { fontSize: '24px', color: '#fff' });
-
-    this.time.addEvent({
-        delay: 1000,
-        callback: spawnEnemy,
-        callbackScope: this,
-        loop: true
-    });
 
     this.physics.add.overlap(bullets, enemies, hitEnemy as any, undefined, this);
     this.physics.add.overlap(player, items, pickUpItem as any, undefined, this);
@@ -126,14 +148,11 @@ function create(this: Phaser.Scene) {
         frameRate: 12,
         hideOnComplete: false
     });
-
-    // BGM 설정: 볼륨 0.5, 무한 반복(loop)
-    const music = this.sound.add('bgm', { volume: 0.5, loop: true });
-    music.play();
 }
 
 function update(this: Phaser.Scene, time: number) {
-    if (isGameOver) return;
+    // 게임 시작 전이거나 게임 오버라면 로직 실행 안 함
+    if (!isGameStarted || isGameOver) return;
 
     if (cursors.left.isDown) player.body.setVelocityX(-300);
     else if (cursors.right.isDown) player.body.setVelocityX(300);
@@ -160,7 +179,7 @@ function spawnEnemy(this: Phaser.Scene) {
     const texture = isTanker ? 'tanker' : 'enemy';
     const enemy = this.physics.add.sprite(x, -20, texture) as GameEntity;
     
-    const SIZE = isTanker ? 180 : 60; // 화면 크기 대비 너무 작으면 안 보이니 적당히 조절
+    const SIZE = isTanker ? 180 : 40; // 화면 크기 대비 너무 작으면 안 보이니 적당히 조절
     
     enemy.setDisplaySize(SIZE, SIZE);
     enemy.body.setSize(SIZE * 0.9, SIZE * 0.9, true);
@@ -269,5 +288,23 @@ function gameOver(this: Phaser.Scene) {
 
     this.input.on('pointerdown', () => {
         this.scene.restart();
+    });
+}
+
+function startGame(this: Phaser.Scene) {
+    isGameStarted = true;
+    startText.destroy(); // 문구 삭제
+    
+    // 물리 엔진 재개
+    this.physics.resume();
+    this.sound.pauseAll();
+    this.sound.play('bgm', { volume: 0.5, loop: true });
+
+    // 적 스폰 타이머 시작
+    this.time.addEvent({
+        delay: 1000,
+        callback: spawnEnemy,
+        callbackScope: this,
+        loop: true
     });
 }
