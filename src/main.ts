@@ -9,16 +9,20 @@ interface GameEntity extends Phaser.Physics.Arcade.Sprite {
 
 const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
-    width: 450,
-    height: 600,
+    width: 400, // Increased width
+    height: 800, // Increased height
+    scale: {
+        autoCenter: Phaser.Scale.CENTER_BOTH // Center the game on the screen
+    },
     parent: 'game-container',
     physics: {
         default: 'arcade',
         arcade: { 
             // x값을 명시적으로 추가하여 Vector2Like 타입을 만족시킵니다.
             gravity: { x: 0, y: 0 }, 
-            debug: false 
-        }    },
+            debug: false
+        }    
+    },
     scene: { preload, create, update }
 };
 
@@ -38,6 +42,9 @@ let scoreText: Phaser.GameObjects.Text;
 let isGameOver: boolean = false;
 let isGameStarted: boolean = false; // 게임 시작 여부
 let startText: Phaser.GameObjects.Text; // 시작 안내 문구
+
+let healthGraphics: Phaser.GameObjects.Graphics; // 체력 바 전용 도화지
+let isInvincible = false; // 겹쳐있을 동안 체력 더 깎이지 않도록 무적 시간 설정
 
 function preload(this: Phaser.Scene) {
     this.load.image('player', 'assets/player.png');
@@ -81,10 +88,11 @@ function create(this: Phaser.Scene) {
     this.sound.play('intro', { volume: 0.5 });
 
     // 2. 시작 안내 문구 생성
-    startText = this.add.text(225, 300, 'Click to start', {
+    startText = this.add.text(this.scale.width / 2, this.scale.height / 2, 'Click to start', {
         fontSize: '32px',
         color: '#fff',
-        align: 'center'
+        align: 'center',
+        fontFamily: '"Jersey 10"'
     }).setOrigin(0.5);
 
     this.tweens.add({
@@ -102,14 +110,15 @@ function create(this: Phaser.Scene) {
     });
 
     // 1. 플레이어 생성 (정사각형 에셋 사용)
-    player = this.physics.add.sprite(225, 550, 'player') as GameEntity;
+    player = this.physics.add.sprite(this.scale.width / 2, this.scale.height - 70, 'player') as GameEntity;
+    player.hp = 5;
 
     // 2. 크기 조정
     const SIZE = 120; 
     player.setDisplaySize(SIZE, SIZE);
-
-    // 3. 히트박스(Body) 조정
-    player.body.setSize(SIZE * 0.8, SIZE * 0.8, true);
+    
+    // 3. 히트박스(Body) 조정: 원본 크기(player.width)를 기준으로 0.5 비율 적용
+    player.body.setSize(player.width * 0.5, player.height * 0.5, true);
 
     player.body.setCollideWorldBounds(true);
 
@@ -121,11 +130,11 @@ function create(this: Phaser.Scene) {
         cursors = this.input.keyboard.createCursorKeys();
     }
 
-    scoreText = this.add.text(16, 16, 'Score: 0', { fontSize: '24px', color: '#fff' });
+    scoreText = this.add.text(16, 16, 'Score: 0', { fontSize: '24px', color: '#fff', fontFamily: '"Jersey 10"' });
 
     this.physics.add.overlap(bullets, enemies, hitEnemy as any, undefined, this);
     this.physics.add.overlap(player, items, pickUpItem as any, undefined, this);
-    this.physics.add.overlap(player, enemies, gameOver as any, undefined, this);
+    this.physics.add.overlap(player, enemies, takeDamage as any, undefined, this);
 
     this.anims.create({
         key: 'explode_anim',
@@ -148,6 +157,17 @@ function create(this: Phaser.Scene) {
         frameRate: 12,
         hideOnComplete: false
     });
+
+    healthGraphics = this.add.graphics();
+
+    // Use postupdate to ensure the bar follows the player after physics movement
+    this.events.on('postupdate', () => {
+        if (isGameStarted && !isGameOver) {
+            drawHealthBar(this, player, healthGraphics);
+        } else {
+            healthGraphics.clear();
+        }
+    });
 }
 
 function update(this: Phaser.Scene, time: number) {
@@ -166,28 +186,35 @@ function update(this: Phaser.Scene, time: number) {
     // 오브젝트 정리 로직 (타입 가드 활용)
     [bullets, enemies, items].forEach(group => {
         group.getChildren().forEach((child: any) => {
-            if (child.y < -50 || child.y > 650) child.destroy();
+            if (child.y < -100 || child.y > this.scale.height + 100) child.destroy();
         });
     });
 }
 
 function spawnEnemy(this: Phaser.Scene) {
     if (isGameOver) return;
-    const x = Phaser.Math.Between(30, 420);
+
+    const x = Phaser.Math.Between(30, this.scale.width - 30);
     const isTanker = Math.random() < 0.1;
     
     const texture = isTanker ? 'tanker' : 'enemy';
     const enemy = this.physics.add.sprite(x, -20, texture) as GameEntity;
     
-    const SIZE = isTanker ? 180 : 40; // 화면 크기 대비 너무 작으면 안 보이니 적당히 조절
+    const SIZE = isTanker ? 150 : 40; 
     
     enemy.setDisplaySize(SIZE, SIZE);
-    enemy.body.setSize(SIZE * 0.9, SIZE * 0.9, true);
+
+    // 원본 이미지 크기(enemy.width)에 비율을 곱해야 화면 크기와 일치하게 됩니다.
+    const hitboxRatio = isTanker ? 0.6 : 1;
+    enemy.body.setSize(enemy.width * hitboxRatio, enemy.height * hitboxRatio, true);
 
     enemy.hp = isTanker ? 5 : 1;
     enemy.isTanker = isTanker;
     enemies.add(enemy);
-    enemy.body.setVelocityY(isTanker ? 50 : 150);
+
+    // 점수가 높을수록 적의 속도가 빨라짐
+    const speedBoost = Math.floor(score / 100) * 10; 
+    enemy.body.setVelocityY((isTanker ? 50 : 150) + speedBoost);
 }
 
 function hitEnemy(this: Phaser.Scene, bullet: Phaser.GameObjects.GameObject, enemy: GameEntity) {
@@ -210,7 +237,7 @@ function hitEnemy(this: Phaser.Scene, bullet: Phaser.GameObjects.GameObject, ene
 
         if (enemy.hp <= 0) {
             score += enemy.isTanker ? 50 : 10;
-            scoreText.setText(`Score: ${score}`);
+            updateScore(score, this);
             if (enemy.isTanker) spawnItem(this, enemy.x, enemy.y);
 
             // hitEnemy 함수 내 적이 죽는 시점
@@ -239,10 +266,10 @@ function spawnItem(scene: Phaser.Scene, x: number, y: number) {
 
     const SIZE = 50; 
     item.setDisplaySize(SIZE, SIZE);
-    item.body.setSize(SIZE, SIZE, true);
+    item.body.setSize(item.width, item.height, true);
 
     items.add(item);
-    item.body.setVelocityY(100);
+    item.body.setVelocityY(200);
 }
 
 function pickUpItem(this: Phaser.Scene, playerObj: GameEntity, item: Phaser.GameObjects.GameObject) {
@@ -269,6 +296,7 @@ function fireBullet(scene: Phaser.Scene, time: number) {
     // 이제 타입이 명확해졌으므로 에러 없이 사용할 수 있습니다.
     if (body) {
         body.setVelocityY(-500);
+        body.setSize(10, 10, true);
     }
 
     scene.sound.play('fire', { volume: 0.3 });
@@ -280,8 +308,8 @@ function gameOver(this: Phaser.Scene) {
     this.sound.pauseAll();
     player.setAlpha(0.5);
 
-    this.add.text(225, 300, 'GAME OVER\nClick to Restart', {
-        fontSize: '40px', color: '#fff', align: 'center'
+    this.add.text(this.scale.width / 2, this.scale.height / 2, 'GAME OVER\nClick to Restart', {
+        fontSize: '40px', color: '#fff', align: 'center', fontFamily: '"Jersey 10"'
     }).setOrigin(0.5);
 
     this.sound.play('outtro', { volume: 0.5 });
@@ -306,5 +334,79 @@ function startGame(this: Phaser.Scene) {
         callback: spawnEnemy,
         callbackScope: this,
         loop: true
+    });
+}
+
+function drawHealthBar(scene: Phaser.Scene, entity: GameEntity, graphics: Phaser.GameObjects.Graphics) {
+    graphics.clear(); // 잔상 남지 않도록 이전 프레임일 때 그린 그림 지우기
+
+    if (!entity || !entity.active) return; // 객체가 없으면 그리지 않음
+
+    const x = entity.x;
+    const y = entity.y;
+    const width = 40;
+    const height = 5;
+    const offset = 60;
+
+    // 1. 배경 (검은색 바닥)
+    graphics.fillStyle(0x333333, 0.8); // Dark grey is visible on black
+    graphics.fillRect(x - width / 2, y + offset, width, height);
+
+    // 2. 현재 체력 계산
+    const currentHp = entity.hp || 0;
+    const maxHp = 5;
+    const healthPercent = Math.max(0, currentHp / maxHp);
+
+    // 3. 체력 바 색상
+    const barColor = healthPercent > 0.3 ? 0x00ff00 : 0xff0000;
+
+    // 4. 체력 바 그리기
+    graphics.fillStyle(barColor, 1);
+    graphics.fillRect(x - width / 2, y + offset, width * healthPercent, height);
+}
+
+function takeDamage(this: Phaser.Scene, playerObj: GameEntity, enemy: GameEntity) {
+    if (isInvincible) return; // 무적 상태면 데미지 무시
+
+    enemy.destroy();
+
+    if (playerObj.hp !== undefined) {
+        playerObj.hp -= 1;
+        
+        // 피격 효과 (빨간색으로 반짝임)
+        playerObj.setTint(0xff0000);
+        this.time.delayedCall(100, () => playerObj.clearTint());
+        const boom = this.add.sprite(enemy.x, enemy.y, 'explosion');
+        boom.setDisplaySize(playerObj.displayWidth * 0.5, playerObj.displayHeight * 0.5);
+        this.cameras.main.shake(100, 0.02);
+        boom.play('explode_anim');
+        this.sound.play('explosion', { volume: 0.5 });
+
+        // 무적 시작
+        isInvincible = true;
+
+        // 1초 뒤 무적 해제
+        this.time.delayedCall(1000, () => {
+            isInvincible = false;
+        });
+
+        if (playerObj.hp <= 0) {
+            gameOver.call(this);
+        }
+    }
+}
+
+function updateScore(score: number, scene: Phaser.Scene) {
+    scoreText.setText(`Score: ${score}`);
+    
+    // 텍스트가 띠용~ 하고 커지는 트윈(Tween) 효과
+    scoreText.setScale(1.2);
+    // 0.1초 만에 다시 원래 크기(1)로 돌아옴
+    scene.tweens.add({
+        targets: scoreText,
+        scaleX: 1,
+        scaleY: 1,
+        duration: 100,
+        ease: 'Back.easeOut'
     });
 }

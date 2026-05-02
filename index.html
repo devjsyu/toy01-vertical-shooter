@@ -2,13 +2,20 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Google Fonts에서 가져온 Jersey 10 폰트 -->
+    <link href="https://fonts.googleapis.com/css2?family=Jersey+10&display=swap" rel="stylesheet">
     <title>Space Shooter MVP</title>
     <style>
         body { margin: 0; background-color: #000; display: flex; justify-content: center; align-items: center; height: 100vh; }
         canvas { box-shadow: 0 0 20px rgba(0, 255, 255, 0.2); }
+        #game-container { font-family: 'Jersey 10', sans-serif; }
     </style>
 </head>
 <body>
+    <!-- 폰트를 미리 로드하기 위해 보이지 않는 곳에 텍스트 배치 -->
+    <div style="font-family: 'Jersey 10'; visibility: hidden; position: absolute;">.</div>    
     <div id="game-container"></div>
     <script type="module" src="src/main.ts"></script>
 </body>
